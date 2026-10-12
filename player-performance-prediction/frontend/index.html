@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0c1114">
+<title>Player Performance Predictor · Ridge &amp; Lasso</title>
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="14" fill="#c8453b"/>
+        <path d="M6.5 8.5c5 3.2 5 12.8 0 16M25.5 8.5c-5 3.2-5 12.8 0 16" fill="none" stroke="#f4e9dc" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="2.2 2.2"/>
+      </svg>
+      <div>
+        <h1>Player Performance Predictor</h1>
+        <p>Forecasting a batter's runs in an IPL innings with Ridge and Lasso regression</p>
+      </div>
+    </div>
+    <div class="chips" id="data-chips" aria-label="Dataset summary"></div>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Sections">
+  <button class="tab active" role="tab" data-tab="predict">Predict</button>
+  <button class="tab" role="tab" data-tab="compare">Model comparison</button>
+  <button class="tab" role="tab" data-tab="graphs">Graphs</button>
+  <button class="tab" role="tab" data-tab="about">About</button>
+</nav>
+
+<main>
+
+  <!-- ===================== PREDICT ===================== -->
+  <section id="tab-predict" class="panel active">
+    <div class="predict-layout">
+
+      <div class="card form-card">
+        <h2>Set up the match</h2>
+        <p class="muted">Inputs use only the batter's earlier innings, so nothing from the innings being predicted leaks in.</p>
+        <form id="predict-form">
+          <label>Batter
+            <div class="search-wrap">
+              <input id="player-input" placeholder="Start typing, e.g. Virat Kohli" autocomplete="off" required>
+              <div id="suggestions" class="suggestions hidden"></div>
+            </div>
+            <span class="hint" id="player-count"></span>
+          </label>
+          <label>Opposition
+            <select id="opponent-select" required></select>
+          </label>
+          <label>Venue
+            <select id="venue-select" required></select>
+          </label>
+          <fieldset class="innings-field">
+            <legend>Batting innings</legend>
+            <div class="segmented">
+              <label class="seg"><input type="radio" name="innings" value="1" checked><span>1st innings</span></label>
+              <label class="seg"><input type="radio" name="innings" value="2"><span>2nd innings</span></label>
+            </div>
+          </fieldset>
+          <button type="submit" class="btn" id="predict-btn">Predict runs</button>
+          <p id="predict-error" class="error hidden" role="alert"></p>
+        </form>
+      </div>
+
+      <div class="result-col">
+        <div id="empty-state" class="card empty">
+          <div class="empty-mark" aria-hidden="true"></div>
+          <h3>No forecast yet</h3>
+          <p class="muted">Choose a batter, an opposition and a venue, then select <b>Predict runs</b>.</p>
+        </div>
+
+        <div id="result" class="hidden">
+          <div class="pred-cards">
+            <div class="pred-card ridge">
+              <div class="model-name">Ridge (L2)</div>
+              <div class="pred-value" id="ridge-val">–</div>
+              <div class="pred-unit">predicted runs</div>
+              <div class="pred-delta" id="ridge-delta"></div>
+            </div>
+            <div class="pred-card lasso">
+              <div class="model-name">Lasso (L1)</div>
+              <div class="pred-value" id="lasso-val">–</div>
+              <div class="pred-unit">predicted runs</div>
+              <div class="pred-delta" id="lasso-delta"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="player-head">
+              <h3 id="player-name"></h3>
+              <span class="muted small-inline" id="context-line"></span>
+            </div>
+
+            <div class="ruler" id="ruler" role="img" aria-label="Predictions compared with the batter's averages">
+              <div class="ruler-track"></div>
+              <div class="ruler-ticks" id="ruler-ticks"></div>
+              <div class="ruler-markers" id="ruler-markers"></div>
+            </div>
+            <ul class="ruler-legend" id="ruler-legend"></ul>
+
+            <div class="stat-strip" id="player-stats"></div>
+            <p class="muted small" id="delta-line"></p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== COMPARE ===================== -->
+  <section id="tab-compare" class="panel">
+    <div class="kpis" id="kpis"></div>
+
+    <div class="card">
+      <h2>Test-set metrics <span class="badge" id="split-badge"></span></h2>
+      <p class="muted">Chronological validation: trained on matches before 2022, tested on 2022–2023.</p>
+      <div class="table-scroll">
+        <table class="metrics">
+          <thead>
+            <tr><th>Model</th><th>MAE ↓</th><th>MSE ↓</th><th>RMSE ↓</th><th>R² ↑</th><th>Features used</th></tr>
+          </thead>
+          <tbody id="metrics-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid2 stretch">
+      <div class="card">
+        <h2>Error comparison</h2>
+        <div class="chart-wrap"><canvas id="error-chart"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>What the models learned</h2>
+        <ul class="takeaways" id="takeaways"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== GRAPHS ===================== -->
+  <section id="tab-graphs" class="panel">
+    <div class="card">
+      <h2>Graphs and statistics</h2>
+      <p class="muted">Generated by <code>backend/visualize.py</code> from the trained models and the 2022–2023 test set. Select a chart to enlarge it. The PNG files are in <code>frontend/figures/</code>.</p>
+    </div>
+
+    <div class="fig-grid">
+      <figure class="card fig-card wide">
+        <h3>Predicted vs actual runs</h3>
+        <button class="fig-btn" data-src="figures/pred_vs_actual.png" data-alt="Predicted vs actual scatter plots for Ridge and Lasso"><img src="figures/pred_vs_actual.png" alt="Predicted vs actual scatter plots for Ridge and Lasso" loading="lazy"></button>
+        <figcaption class="muted small">Points near the dashed line are accurate. Both models follow the diagonal with the usual scatter of T20 cricket.</figcaption>
+      </figure>
+      <figure class="card fig-card wide">
+        <h3>Residual plots</h3>
+        <button class="fig-btn" data-src="figures/residuals.png" data-alt="Residual plots for Ridge and Lasso"><img src="figures/residuals.png" alt="Residual plots for Ridge and Lasso" loading="lazy"></button>
+        <figcaption class="muted small">Residuals form a roughly random cloud around zero, so there is no strong systematic bias. Spread widens slightly at high predicted scores.</figcaption>
+      </figure>
+      <figure class="card fig-card wide">
+        <h3>Coefficient comparison: Ridge vs Lasso</h3>
+        <button class="fig-btn" data-src="figures/coefficients.png" data-alt="Top 15 feature coefficients for Ridge vs Lasso"><img src="figures/coefficients.png" alt="Top 15 feature coefficients for Ridge vs Lasso" loading="lazy"></button>
+        <figcaption class="muted small">Top 15 features by Ridge coefficient size. Lasso shrinks the weaker ones exactly to zero, which selects features automatically among correlated predictors.</figcaption>
+      </figure>
+      <figure class="card fig-card">
+        <h3>Test metrics</h3>
+        <button class="fig-btn" data-src="figures/metrics.png" data-alt="Bar charts of MAE, RMSE and R2 for the three models"><img src="figures/metrics.png" alt="Bar charts of MAE, RMSE and R2 for the three models" loading="lazy"></button>
+        <figcaption class="muted small">Both regularised models beat the mean baseline on every metric.</figcaption>
+      </figure>
+      <figure class="card fig-card">
+        <h3>Lasso regularisation path</h3>
+        <button class="fig-btn" data-src="figures/lasso_cv.png" data-alt="Lasso cross-validated MSE versus alpha"><img src="figures/lasso_cv.png" alt="Lasso cross-validated MSE versus alpha" loading="lazy"></button>
+        <figcaption class="muted small">Cross-validated MSE across the alpha grid. The dashed line marks the selected regularisation strength.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ===================== ABOUT ===================== -->
+  <section id="tab-about" class="panel">
+    <div class="grid2 stretch">
+      <div class="card">
+        <h2>How it works</h2>
+        <ol class="steps">
+          <li><strong>Data.</strong> IPL ball-by-ball deliveries, giving <span id="about-train"></span> player-innings.</li>
+          <li><strong>Target.</strong> <code>innings_runs</code>: runs credited to the batter in one innings. Extras are excluded and zero scores are kept.</li>
+          <li><strong>Features.</strong> Career average, strike rate, recent form (last 5 and last 3 innings), consistency and days since the last match, all computed from innings <em>before</em> the one being predicted, plus innings, venue and teams.</li>
+          <li><strong>Models.</strong> Ridge (L2 shrinks all coefficients) and Lasso (L1 also zeroes out weak features), compared with a mean baseline.</li>
+          <li><strong>Validation.</strong> Chronological split, so the models never see future matches during training.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h2>Numeric features</h2>
+        <p class="muted">Each is built from earlier innings only.</p>
+        <div class="feature-chips" id="feature-chips"></div>
+        <h2 class="mt">Run it yourself</h2>
+        <pre class="code">cd backend
+pip install -r requirements.txt
+python train.py       # builds models
+python visualize.py   # builds charts
+python app.py         # http://localhost:5000</pre>
+        <p class="muted small">Predictions are statistical estimates for demonstration, not betting advice.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<dialog id="lightbox" aria-label="Enlarged chart">
+  <button class="lb-close" id="lb-close" aria-label="Close">×</button>
+  <img id="lb-img" alt="">
+</dialog>
+
+<footer>
+  <p>Player Performance Prediction · Ridge and Lasso Regression · Course project demo</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
