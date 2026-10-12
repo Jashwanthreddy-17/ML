@@ -1,0 +1,12 @@
+# Render Blueprint — deploys the Player Performance Predictor as one web service.
+# The build trains the models and generates the figures, so the only
+# prerequisite is data/match_data.csv present in the repo.
+services:
+  - type: web
+    name: player-performance-predictor
+    env: python
+    buildCommand: pip install -r player-performance-prediction/backend/requirements.txt && python player-performance-prediction/backend/train.py && python player-performance-prediction/backend/visualize.py
+    startCommand: gunicorn --chdir player-performance-prediction/backend app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0

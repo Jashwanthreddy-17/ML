@@ -73,3 +73,22 @@ Then open http://localhost:5000 in your browser.
    test on 2022–2023. Compared with MAE, MSE, RMSE and R².
 
 Predictions are statistical estimates for demonstration only.
+
+## Deploy (Render, free)
+
+Netlify can't host the Python backend (static files only, no Python runtime),
+so the app deploys as one service on Render, which runs it exactly like
+`python app.py` does locally.
+
+1. **Upload the dataset** to the repo via the GitHub website: open
+   `player-performance-prediction/` → Add file → Upload files → drop in
+   `match_data.csv` inside a `data/` folder. (36 MB — too large to push via API;
+   the file must be at `player-performance-prediction/data/match_data.csv`.)
+2. Go to [render.com](https://render.com), sign up with GitHub (free).
+3. New → Blueprint → select your `ML` repo. Render reads `render.yaml` and
+   creates the `player-performance-predictor` web service.
+4. The build installs dependencies, runs `train.py` and `visualize.py`, then
+   starts the app with gunicorn. Open the URL Render gives you.
+
+Note: the free tier sleeps when idle, so the first visit after a while takes
+~30–60 s to wake up.
